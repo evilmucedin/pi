@@ -211,6 +211,17 @@ function resolvePiCommand(explicit) {
 	const tsx = join(REPO_ROOT, "node_modules", ".bin", process.platform === "win32" ? "tsx.cmd" : "tsx");
 	const cli = join(REPO_ROOT, "packages", "coding-agent", "src", "cli.ts");
 	if (existsSync(tsx) && existsSync(cli)) {
+		// The repo sources import the generated model catalog, which is
+		// gitignored; without it pi crashes on import. ollama-proxy.mjs
+		// generates it on startup.
+		const manifest = join(REPO_ROOT, "packages", "ai", "src", "providers", "data", ".manifest.json");
+		if (!existsSync(manifest)) {
+			console.error("pi-with-ollama: the generated model data (packages/ai/src/providers/data/) is missing,");
+			console.error("pi-with-ollama: so pi cannot be launched from this repo's sources.");
+			console.error("pi-with-ollama: restart 'node scripts/ollama/ollama-proxy.mjs' (it generates the data),");
+			console.error("pi-with-ollama: or run: npm run hydrate:model-data");
+			process.exit(1);
+		}
 		return {
 			command: tsx,
 			args: ["--tsconfig", join(REPO_ROOT, "tsconfig.json"), cli],

@@ -6,6 +6,10 @@
  * (including streaming responses) to Ollama. pi talks to the proxy's
  * OpenAI-compatible endpoint (http://127.0.0.1:11435/v1 by default).
  *
+ * On startup it also generates pi's model catalog data
+ * (packages/ai/src/providers/data/, including .manifest.json) when missing,
+ * so pi can be launched from this repo's sources without a prior build.
+ *
  * Usage:
  *   node scripts/ollama/ollama-proxy.mjs [options]
  *
@@ -23,8 +27,14 @@
  * Works on Linux, macOS, and Windows (requires Node.js 18+).
  */
 
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import http from "node:http";
-import { URL } from "node:url";
+import { dirname, join } from "node:path";
+import { fileURLToPath, URL } from "node:url";
+
+const SCRIPT_DIR = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = join(SCRIPT_DIR, "..", "..");
 
 const HOP_BY_HOP_HEADERS = new Set([
 	"connection",
@@ -186,8 +196,39 @@ async function handleHealth(clientResponse, ollamaUrl) {
 	}
 }
 
+/**
+ * pi imports the generated model catalog (packages/ai/src/providers/data/,
+ * including .manifest.json) at startup, but that directory is gitignored and
+ * only produced by a build step. When pi is later launched from this repo's
+ * sources (see pi-with-ollama.mjs), a missing catalog makes it crash on
+ * import. Generate the files here so the ollama flow works out of the box.
+ */
+function ensureGeneratedModelData() {
+	const dataDir = join(REPO_ROOT, "packages", "ai", "src", "providers", "data");
+	const manifestPath = join(dataDir, ".manifest.json");
+	const generatorPath = join(REPO_ROOT, "packages", "ai", "scripts", "generate-models.ts");
+	if (existsSync(manifestPath) || !existsSync(generatorPath)) {
+		return;
+	}
+	console.log("ollama-proxy: generated model data is missing, hydrating packages/ai/src/providers/data/ ...");
+	const result = spawnSync(process.execPath, [generatorPath, "--strict", "--data-only"], {
+		cwd: REPO_ROOT,
+		stdio: ["ignore", "ignore", "inherit"],
+	});
+	if (result.status === 0 && existsSync(manifestPath)) {
+		console.log("ollama-proxy: model data generated.");
+	} else {
+		console.warn("ollama-proxy: warning: could not generate the model data (see errors above).");
+		console.warn("ollama-proxy: this needs Node.js 22.19+ and network access to models.dev.");
+		console.warn("ollama-proxy: pi installed from npm is unaffected; to run pi from this repo's sources,");
+		console.warn("ollama-proxy: fix the issue and rerun this proxy, or run: npm run hydrate:model-data");
+	}
+}
+
 async function main() {
 	const options = parseArgs(process.argv.slice(2));
+
+	ensureGeneratedModelData();
 
 	console.log(`ollama-proxy: forwarding to ${options.ollama}`);
 	try {
