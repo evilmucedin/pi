@@ -4,7 +4,7 @@ Use local [Ollama](https://ollama.com) models in the pi coding agent through a s
 
 Two scripts, run in order:
 
-1. `ollama-proxy.mjs` — starts a local LLM model proxy in front of the Ollama server. pi talks to the proxy's OpenAI-compatible endpoint (`http://127.0.0.1:11435/v1` by default), and the proxy forwards every request (including streaming) to Ollama.
+1. `ollama-proxy.mjs` — starts a local LLM model proxy in front of the Ollama server. pi talks to the proxy's OpenAI-compatible endpoint (`http://127.0.0.1:11435/v1` by default), and the proxy forwards every request (including streaming) to Ollama. On startup it also generates pi's model catalog data (`packages/ai/src/providers/data/`, including `.manifest.json`) when missing, so pi can run from this repo's sources without a prior build.
 2. `pi-with-ollama.mjs` — discovers the models available through the proxy, registers them as an `ollama` provider in pi's `models.json`, and launches pi with an Ollama model preselected.
 
 Both scripts are plain Node.js (18+) with no dependencies and work on Linux, macOS, and Windows.
@@ -70,6 +70,7 @@ See [docs/models.md](../../packages/coding-agent/docs/models.md) for the full `m
 
 ## Troubleshooting
 
+- **"the generated model data ... is missing"** — pi's model catalog (`packages/ai/src/providers/data/`) is gitignored and has to be generated once. Restart `ollama-proxy.mjs` (it generates the data automatically; needs Node.js 22.19+ and network access), or run `npm run hydrate:model-data` from the repo root.
 - **"cannot reach the model proxy"** — start `ollama-proxy.mjs` first, and check that `--proxy` matches the proxy's `--port`.
 - **"the proxy is running but Ollama is not reachable"** — start Ollama (`ollama serve` or the desktop app). If Ollama runs on a non-default address, pass `--ollama <url>` to the proxy or set `OLLAMA_HOST`.
 - **Model errors on tool calls** — the model does not support tool calling. Pull one that does (the launcher prints a warning for models without the `tools` capability).
